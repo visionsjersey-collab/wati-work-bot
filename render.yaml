@@ -2,16 +2,11 @@ services:
   - type: web
     name: wati-work-bot
     env: python
-    plan: free
     buildCommand: |
       pip install --upgrade pip
       pip install -r requirements.txt
-      
-      # Force install Chromium & its dependencies into project dir
       python -m playwright install chromium --with-deps
     startCommand: python main.py
     envVars:
-      - key: PORT
-        value: 10000
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/.playwright-browsers
