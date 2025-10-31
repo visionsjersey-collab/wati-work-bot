@@ -6,4 +6,10 @@ services:
       pip install -r requirements.txt
       python -m playwright install chromium --with-deps
     startCommand: python main.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/.playwright-browsers
+    autoDeploy: true
     plan: free
