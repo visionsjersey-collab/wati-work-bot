@@ -14,11 +14,9 @@ ON_RENDER = os.environ.get("RENDER") == "true"
 
 # ✅ Set Playwright browser path based on environment
 if ON_RENDER:
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/tmp/playwright-browsers"
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
 else:
     os.environ.pop("PLAYWRIGHT_BROWSERS_PATH", None)  # Use default local install
-
-os.makedirs(os.environ.get("PLAYWRIGHT_BROWSERS_PATH", ""), exist_ok=True)
 
 # ✅ Persistent user data directory (saves login)
 USER_DATA_DIR = (
@@ -28,6 +26,7 @@ USER_DATA_DIR = (
 # 🧩 Auto-unzip saved login for Render
 def unzip_wati_profile():
     zip_path = os.path.join(os.getcwd(), "wati_profile.zip")
+    print("Checking for saved login ZIP:", os.path.exists(zip_path), flush=True)  # ✅ DEBUG LINE
     if ON_RENDER and os.path.exists(zip_path):
         if not os.path.exists(USER_DATA_DIR):
             print("📦 Extracting saved login (wati_profile.zip)...", flush=True)
@@ -98,13 +97,14 @@ async def run_wati_bot():
                     # ✅ Auto-zip wati_profile for Render upload
                     zip_path = os.path.join(os.getcwd(), "wati_profile.zip")
                     if not ON_RENDER:
-                        print("📦 Creating wati_profile.zip for Render...", flush=True)
+                        print("📦 Creating wati_profile.zip automatically...", flush=True)
                         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
                             for root, _, files in os.walk(USER_DATA_DIR):
                                 for file in files:
                                     file_path = os.path.join(root, file)
                                     zipf.write(file_path, os.path.relpath(file_path, os.path.dirname(USER_DATA_DIR)))
                         print("✅ wati_profile.zip created successfully!", flush=True)
+                        print("📤 You can now upload this ZIP to Render for permanent login.", flush=True)
 
                     print("✅ Login session saved permanently! Please rerun the bot.", flush=True)
                     return  # Stop loop after saving login
@@ -192,4 +192,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
