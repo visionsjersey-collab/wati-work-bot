@@ -42,7 +42,7 @@ async def ensure_chromium_installed():
     if not os.path.exists(chromium_path):
         print("🧩 Chromium not found, installing it now...", flush=True)
         process = await asyncio.create_subprocess_exec(
-            "python", "-m", "playwright", "install", "chromium",
+            "python3", "-m", "playwright", "install", "chromium",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
@@ -71,7 +71,7 @@ async def run_wati_bot():
                 # ✅ Launch persistent Chromium context (saves login permanently)
                 browser_context = await p.chromium.launch_persistent_context(
                     user_data_dir=USER_DATA_DIR,
-                    headless=True,
+                    headless=False,
                 )
                 page = await browser_context.new_page()
 
