@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import subprocess
+import zipfile
 from aiohttp import web
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
@@ -9,7 +10,31 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 sys.stdout.reconfigure(line_buffering=True)
 
 # ✅ Persistent browser install path on Render
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
+if os.environ.get("RENDER") == "true":
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
+else:
+    os.environ.pop("PLAYWRIGHT_BROWSERS_PATH", None)  # Use default local path
+
+# ✅ Directory to store Chromium user data (persistent login)
+# ✅ Detect environment (local vs Render)
+if "RENDER" in os.environ:
+    USER_DATA_DIR = "/opt/render/project/src/wati_profile"
+else:
+    USER_DATA_DIR = os.path.join(os.getcwd(), "wati_profile")
+
+
+# 🧩 Auto-unzip saved login (only on Render)
+def unzip_wati_profile():
+    zip_path = os.path.join(os.getcwd(), "wati_profile.zip")
+    if "RENDER" in os.environ and os.path.exists(zip_path):
+        if not os.path.exists(USER_DATA_DIR):
+            print("📦 Extracting saved login (wati_profile.zip)...", flush=True)
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(os.path.dirname(USER_DATA_DIR))
+            print("✅ Login data extracted successfully!", flush=True)
+        else:
+            print("✅ wati_profile folder already exists — skipping unzip.", flush=True)
+
 
 async def ensure_chromium_installed():
     """Ensure Playwright Chromium exists in persistent path."""
@@ -34,35 +59,39 @@ async def ensure_chromium_installed():
 
 # 🌐 WATI Bot Config
 WATI_URL = "https://live.wati.io/1037246/teamInbox/"
-STORAGE_STATE = "storageState.json"
 CHECK_INTERVAL = 180  # 3 minutes between loops
 
 
 async def run_wati_bot():
-    print("🌐 Launching WATI automation...", flush=True)
+    print("🌐 Launching WATI automation with persistent browser...", flush=True)
 
     while True:
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                context = await browser.new_context(storage_state=STORAGE_STATE)
-                page = await context.new_page()
+                # ✅ Launch persistent Chromium context (saves login permanently)
+                browser_context = await p.chromium.launch_persistent_context(
+                    user_data_dir=USER_DATA_DIR,
+                    headless=False,
+                )
+                page = await browser_context.new_page()
 
                 print("🌍 Navigating to WATI Inbox...", flush=True)
                 await page.goto(WATI_URL, timeout=60000)
                 await asyncio.sleep(2)
 
+                # If first run, you must log in manually via local run (it saves here)
                 try:
                     await page.wait_for_selector("text=Team Inbox", timeout=60000)
                     print("✅ WATI Inbox loaded successfully!", flush=True)
                 except PlaywrightTimeout:
-                    print("⚠️ Login expired — restarting in 10s...", flush=True)
-                    await browser.close()
-                    await asyncio.sleep(10)
+                    print("⚠️ Login required or expired — please log in manually once locally!", flush=True)
+                    await asyncio.sleep(30)
                     continue
 
+                # ✅ Main automation loop
                 while True:
                     print("🔎 Checking for unread chats...", flush=True)
+
                     try:
                         await page.wait_for_selector("div.conversation-item__unread-count", timeout=10000)
                     except PlaywrightTimeout:
@@ -170,6 +199,7 @@ async def start_web_server():
 
 async def main():
     print("🚀 Initializing environment...", flush=True)
+    unzip_wati_profile()  # 🧩 Auto-extract saved login
     await ensure_chromium_installed()
 
     print("🚀 Starting both web server and WATI bot...", flush=True)
@@ -181,3 +211,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
