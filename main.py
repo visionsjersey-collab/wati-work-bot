@@ -14,9 +14,11 @@ ON_RENDER = os.environ.get("RENDER") == "true"
 
 # ✅ Set Playwright browser path based on environment
 if ON_RENDER:
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/tmp/playwright-browsers"
 else:
     os.environ.pop("PLAYWRIGHT_BROWSERS_PATH", None)  # Use default local install
+
+os.makedirs(os.environ.get("PLAYWRIGHT_BROWSERS_PATH", ""), exist_ok=True)
 
 # ✅ Persistent user data directory (saves login)
 USER_DATA_DIR = (
@@ -190,3 +192,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
