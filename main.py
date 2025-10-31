@@ -8,19 +8,17 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
 
 # ✅ Ensure Chromium is installed (no sudo required)
-try:
+async def ensure_chromium_installed():
     chromium_path = "/opt/render/project/src/.playwright-browsers/chromium-1117/chrome-linux/chrome"
     if not os.path.exists(chromium_path):
         print("🧩 Chromium not found, installing it now...")
-        subprocess.run(
-            ["python", "-m", "playwright", "install", "chromium"],
-            check=True
+        proc = await asyncio.create_subprocess_exec(
+            "python", "-m", "playwright", "install", "chromium"
         )
+        await proc.communicate()
         print("✅ Chromium installed successfully!")
     else:
         print("✅ Chromium already exists — skipping install.")
-except Exception as e:
-    print(f"⚠️ Playwright browser install failed: {e}")
 
 # 🌐 WATI bot config
 WATI_URL = "https://live.wati.io/1037246/teamInbox/"
@@ -166,10 +164,17 @@ async def start_web_server():
 
 
 async def main():
+    print("🚀 Initializing environment...")
+    await ensure_chromium_installed()
+
     print("🚀 Starting both web server and WATI bot...")
-    await asyncio.gather(run_wati_bot(), start_web_server())
+    # start server first, then bot
+    server_task = asyncio.create_task(start_web_server())
+    await asyncio.sleep(3)  # allow server to bind fully
+    bot_task = asyncio.create_task(run_wati_bot())
+
+    await asyncio.gather(server_task, bot_task)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
