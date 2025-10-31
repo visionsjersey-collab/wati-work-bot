@@ -1,25 +1,28 @@
 import os
 import subprocess
+import asyncio
+from aiohttp import web
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
-# ✅ Ensure Playwright uses a persistent browser install directory on Render
+# ✅ Persistent browser install path on Render
 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
 
-# ✅ Auto-check and install Chromium browser if missing (Render fix)
+# ✅ Ensure Chromium is installed (no sudo required)
 try:
     chromium_path = "/opt/render/project/src/.playwright-browsers/chromium-1117/chrome-linux/chrome"
     if not os.path.exists(chromium_path):
         print("🧩 Chromium not found, installing it now...")
-        subprocess.run(["python", "-m", "playwright", "install", "chromium", "--with-deps"], check=True)
+        subprocess.run(
+            ["python", "-m", "playwright", "install", "chromium"],
+            check=True
+        )
         print("✅ Chromium installed successfully!")
     else:
         print("✅ Chromium already exists — skipping install.")
 except Exception as e:
     print(f"⚠️ Playwright browser install failed: {e}")
 
-import asyncio
-from aiohttp import web
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
-
+# 🌐 WATI bot config
 WATI_URL = "https://live.wati.io/1037246/teamInbox/"
 STORAGE_STATE = "storageState.json"
 CHECK_INTERVAL = 180  # 3 minutes between loops
@@ -109,6 +112,7 @@ async def run_wati_bot():
                                 print("⚠️ Chat area not loaded, skipping this chat.")
                                 continue
 
+                            # Step 1: Click message options
                             print("⚙️ Clicking message options...")
                             await page.click(
                                 "#mainTeamInbox div.chat-side-content div span.chat-input__icon-option",
@@ -116,6 +120,7 @@ async def run_wati_bot():
                             )
                             await asyncio.sleep(1.5)
 
+                            # Step 2: Click Ads (CTWA)
                             print("📢 Clicking 'Ads (CTWA)'...")
                             ads_ctwa = await page.query_selector("#flow-nav-68ff67df4f393f0757f108d8")
                             if ads_ctwa:
@@ -131,6 +136,7 @@ async def run_wati_bot():
                             await asyncio.sleep(2)
                             continue
 
+                        # Reload for next unread chat
                         print("🔄 Reloading inbox for next unread...")
                         await page.reload()
                         await page.wait_for_selector("text=Team Inbox", timeout=30000)
