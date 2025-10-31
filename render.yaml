@@ -4,11 +4,11 @@ services:
     env: python
     plan: free
     buildCommand: |
-      # install dependencies
+      # Install dependencies
       pip install --upgrade pip
       pip install -r requirements.txt
 
-      # explicitly install playwright browsers
+      # Force install Chromium in the container (Render-safe)
       python -m playwright install chromium --with-deps
     startCommand: python main.py
     envVars:
