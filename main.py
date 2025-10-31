@@ -6,40 +6,40 @@ import zipfile
 from aiohttp import web
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
-# ✅ Always flush logs immediately on Render
+# ✅ Always flush logs immediately (important for Render)
 sys.stdout.reconfigure(line_buffering=True)
 
-# ✅ Persistent browser install path on Render
-if os.environ.get("RENDER") == "true":
+# ✅ Detect environment (local vs Render)
+ON_RENDER = os.environ.get("RENDER") == "true"
+
+# ✅ Set Playwright browser path based on environment
+if ON_RENDER:
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
 else:
-    os.environ.pop("PLAYWRIGHT_BROWSERS_PATH", None)  # Use default local path
+    os.environ.pop("PLAYWRIGHT_BROWSERS_PATH", None)  # Use default local install
 
-# ✅ Directory to store Chromium user data (persistent login)
-# ✅ Detect environment (local vs Render)
-if "RENDER" in os.environ:
-    USER_DATA_DIR = "/opt/render/project/src/wati_profile"
-else:
-    USER_DATA_DIR = os.path.join(os.getcwd(), "wati_profile")
+# ✅ Persistent user data directory (saves login)
+USER_DATA_DIR = (
+    "/opt/render/project/src/wati_profile" if ON_RENDER else os.path.join(os.getcwd(), "wati_profile")
+)
 
-
-# 🧩 Auto-unzip saved login (only on Render)
+# 🧩 Auto-unzip saved login for Render
 def unzip_wati_profile():
     zip_path = os.path.join(os.getcwd(), "wati_profile.zip")
-    if "RENDER" in os.environ and os.path.exists(zip_path):
+    if ON_RENDER and os.path.exists(zip_path):
         if not os.path.exists(USER_DATA_DIR):
             print("📦 Extracting saved login (wati_profile.zip)...", flush=True)
             with zipfile.ZipFile(zip_path, "r") as zip_ref:
                 zip_ref.extractall(os.path.dirname(USER_DATA_DIR))
             print("✅ Login data extracted successfully!", flush=True)
         else:
-            print("✅ wati_profile folder already exists — skipping unzip.", flush=True)
+            print("✅ Existing login folder detected — skipping unzip.", flush=True)
 
 
+# ✅ Ensure Chromium is installed
 async def ensure_chromium_installed():
-    """Ensure Playwright Chromium exists in persistent path."""
     chromium_path = "/opt/render/project/src/.playwright-browsers/chromium-1117/chrome-linux/chrome"
-    if not os.path.exists(chromium_path):
+    if ON_RENDER and not os.path.exists(chromium_path):
         print("🧩 Chromium not found, installing it now...", flush=True)
         process = await asyncio.create_subprocess_exec(
             "python3", "-m", "playwright", "install", "chromium",
@@ -54,12 +54,12 @@ async def ensure_chromium_installed():
         await process.wait()
         print("✅ Chromium installed successfully!", flush=True)
     else:
-        print("✅ Chromium already exists — skipping install.", flush=True)
+        print("✅ Chromium already exists or running locally — skipping install.", flush=True)
 
 
-# 🌐 WATI Bot Config
+# 🌐 Bot configuration
 WATI_URL = "https://live.wati.io/1037246/teamInbox/"
-CHECK_INTERVAL = 180  # 3 minutes between loops
+CHECK_INTERVAL = 180  # seconds
 
 
 async def run_wati_bot():
@@ -68,10 +68,10 @@ async def run_wati_bot():
     while True:
         try:
             async with async_playwright() as p:
-                # ✅ Launch persistent Chromium context (saves login permanently)
+                # ✅ Launch persistent Chromium (saves session)
                 browser_context = await p.chromium.launch_persistent_context(
                     user_data_dir=USER_DATA_DIR,
-                    headless=False,
+                    headless=ON_RENDER,  # ✅ headless only on Render
                 )
                 page = await browser_context.new_page()
 
@@ -79,19 +79,37 @@ async def run_wati_bot():
                 await page.goto(WATI_URL, timeout=60000)
                 await asyncio.sleep(2)
 
-                # If first run, you must log in manually via local run (it saves here)
+                # ✅ Check login
                 try:
                     await page.wait_for_selector("text=Team Inbox", timeout=60000)
-                    print("✅ WATI Inbox loaded successfully!", flush=True)
+                    print("✅ Logged in and WATI Inbox loaded successfully!", flush=True)
                 except PlaywrightTimeout:
-                    print("⚠️ Login required or expired — please log in manually once locally!", flush=True)
-                    await asyncio.sleep(30)
-                    continue
+                    print("⚠️ Login required — please log in manually (locally).", flush=True)
+                    print("💾 Once logged in, DO NOT close the browser — wait 60s to save session.", flush=True)
+                    await asyncio.sleep(60)
+                    print("💾 Saving login session to:", USER_DATA_DIR, flush=True)
+
+                    # ✅ Save storage state and close browser
+                    await browser_context.storage_state(path=os.path.join(USER_DATA_DIR, "storage.json"))
+                    await browser_context.close()
+
+                    # ✅ Auto-zip wati_profile for Render upload
+                    zip_path = os.path.join(os.getcwd(), "wati_profile.zip")
+                    if not ON_RENDER:
+                        print("📦 Creating wati_profile.zip for Render...", flush=True)
+                        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                            for root, _, files in os.walk(USER_DATA_DIR):
+                                for file in files:
+                                    file_path = os.path.join(root, file)
+                                    zipf.write(file_path, os.path.relpath(file_path, os.path.dirname(USER_DATA_DIR)))
+                        print("✅ wati_profile.zip created successfully!", flush=True)
+
+                    print("✅ Login session saved permanently! Please rerun the bot.", flush=True)
+                    return  # Stop loop after saving login
 
                 # ✅ Main automation loop
                 while True:
                     print("🔎 Checking for unread chats...", flush=True)
-
                     try:
                         await page.wait_for_selector("div.conversation-item__unread-count", timeout=10000)
                     except PlaywrightTimeout:
@@ -102,7 +120,7 @@ async def run_wati_bot():
 
                     unread_elements = await page.query_selector_all("div.conversation-item__unread-count")
                     if not unread_elements:
-                        print("😴 No unread chats. Waiting 3 mins before rechecking...", flush=True)
+                        print("😴 No unread chats. Waiting 3 mins...", flush=True)
                         await asyncio.sleep(CHECK_INTERVAL)
                         await page.reload()
                         continue
@@ -110,83 +128,47 @@ async def run_wati_bot():
                     print(f"💬 Found {len(unread_elements)} unread chat(s). Processing...", flush=True)
                     processed = 0
 
-                    while True:
-                        unread_elements = await page.query_selector_all("div.conversation-item__unread-count")
-                        if not unread_elements:
-                            print("✅ All unread chats cleared for now.", flush=True)
-                            break
-
-                        elem = unread_elements[0]
+                    for elem in unread_elements:
                         processed += 1
                         print(f"👉 Opening unread chat {processed}/{len(unread_elements)}", flush=True)
-
                         try:
-                            clicked = await page.evaluate(
-                                """(node) => {
-                                    const chatRow = node.closest('.conversation-item');
-                                    if (chatRow) {
-                                        chatRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                        chatRow.click();
-                                        return true;
-                                    }
-                                    return false;
-                                }""",
-                                elem,
-                            )
-                            if not clicked:
-                                print("⚠️ Parent .conversation-item not found, clicking directly...", flush=True)
-                                await elem.scroll_into_view_if_needed()
-                                await elem.click(force=True)
-
+                            await elem.scroll_into_view_if_needed()
+                            await elem.click()
                             print("🟢 Clicked unread chat successfully", flush=True)
+
                             await asyncio.sleep(2.5)
-
-                            try:
-                                await page.wait_for_selector("div.chat-area", timeout=10000)
-                            except PlaywrightTimeout:
-                                print("⚠️ Chat area not loaded, skipping this chat.", flush=True)
-                                continue
-
-                            print("⚙️ Clicking message options...", flush=True)
                             await page.click(
                                 "#mainTeamInbox div.chat-side-content div span.chat-input__icon-option",
                                 timeout=10000,
                             )
                             await asyncio.sleep(1.5)
 
-                            print("📢 Clicking 'Ads (CTWA)'...", flush=True)
                             ads_ctwa = await page.query_selector("#flow-nav-68ff67df4f393f0757f108d8")
                             if ads_ctwa:
                                 await ads_ctwa.click()
-                                print("✅ Clicked Ads (CTWA) successfully!\n", flush=True)
+                                print("✅ Clicked Ads (CTWA) successfully!", flush=True)
                             else:
-                                print("⚠️ Couldn’t find Ads (CTWA) element.", flush=True)
+                                print("⚠️ 'Ads (CTWA)' not found.", flush=True)
 
                             await asyncio.sleep(2)
 
                         except Exception as e:
-                            print(f"⚠️ Error in unread chat #{processed}: {e}", flush=True)
-                            await asyncio.sleep(2)
+                            print(f"⚠️ Error in chat #{processed}: {e}", flush=True)
                             continue
 
-                        print("🔄 Reloading inbox for next unread...", flush=True)
-                        await page.reload()
-                        await page.wait_for_selector("text=Team Inbox", timeout=30000)
-                        await asyncio.sleep(2)
-
-                    print(f"🕒 Completed {processed} unread chats. Waiting before next scan...", flush=True)
+                    print("🕒 Waiting before next check...", flush=True)
                     await asyncio.sleep(CHECK_INTERVAL)
                     await page.reload()
 
         except Exception as e:
             print(f"🚨 Fatal error: {e}", flush=True)
-            print("🔁 Restarting bot in 10 seconds...", flush=True)
             await asyncio.sleep(10)
 
 
+# ✅ Web server
 async def start_web_server():
     async def handle(request):
-        return web.Response(text="✅ WATI AutoBot running successfully on Render!")
+        return web.Response(text="✅ WATI AutoBot running successfully!")
 
     app = web.Application()
     app.router.add_get("/", handle)
@@ -194,22 +176,17 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 10000)))
     await site.start()
-    print(f"🌍 Web server running on port {os.getenv('PORT', 10000)}", flush=True)
+    print("🌍 Web server running!", flush=True)
 
 
 async def main():
     print("🚀 Initializing environment...", flush=True)
-    unzip_wati_profile()  # 🧩 Auto-extract saved login
+    unzip_wati_profile()
     await ensure_chromium_installed()
 
-    print("🚀 Starting both web server and WATI bot...", flush=True)
-    server_task = asyncio.create_task(start_web_server())
-    await asyncio.sleep(2)
-    bot_task = asyncio.create_task(run_wati_bot())
-    await asyncio.gather(server_task, bot_task)
+    print("🚀 Starting bot and web server...", flush=True)
+    await asyncio.gather(start_web_server(), run_wati_bot())
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
