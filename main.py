@@ -1,19 +1,7 @@
 import os
-import subprocess
 
 # ✅ Ensure Playwright uses a persistent browser install directory on Render
 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
-
-# ✅ Auto-install Playwright Chromium at runtime if missing (failsafe)
-try:
-    print("🧩 Checking Playwright browsers...")
-    subprocess.run(
-        ["python", "-m", "playwright", "install", "chromium", "--with-deps"],
-        check=True
-    )
-    print("✅ Chromium verified or installed successfully!")
-except Exception as e:
-    print(f"⚠️ Browser auto-install failed: {e}")
 
 import asyncio
 from aiohttp import web
