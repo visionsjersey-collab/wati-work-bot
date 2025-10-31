@@ -71,7 +71,7 @@ async def run_wati_bot():
                 # ✅ Launch persistent Chromium context (saves login permanently)
                 browser_context = await p.chromium.launch_persistent_context(
                     user_data_dir=USER_DATA_DIR,
-                    headless=False,
+                    headless=True,
                 )
                 page = await browser_context.new_page()
 
@@ -211,4 +211,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
