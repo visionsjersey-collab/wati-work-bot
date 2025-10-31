@@ -1,18 +1,15 @@
 services:
   - type: web
-    name: wati-auto-bot
+    name: wati-bot
     env: python
     plan: free
     buildCommand: |
-      pip install --upgrade pip setuptools wheel
+      pip install --upgrade pip
       pip install -r requirements.txt
-      python -m playwright install chromium
+      playwright install chromium
     startCommand: python main.py
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10.13
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/.cache/ms-playwright
-      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
-        value: "1"
-
+        value: 3.10.12
+      - key: PORT
+        value: 10000
