@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: wati-bot
+    name: wati-auto-bot
     env: python
     plan: free
     buildCommand: |
@@ -9,7 +9,5 @@ services:
       playwright install chromium
     startCommand: python main.py
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.12
       - key: PORT
         value: 10000
