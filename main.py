@@ -1,5 +1,8 @@
-import asyncio
 import os
+# ✅ Ensure Playwright uses a persistent browser install directory on Render
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
+
+import asyncio
 from aiohttp import web
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
