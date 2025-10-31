@@ -166,8 +166,10 @@ async def start_web_server():
 
 
 async def main():
+    print("🚀 Starting both web server and WATI bot...")
     await asyncio.gather(run_wati_bot(), start_web_server())
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+
