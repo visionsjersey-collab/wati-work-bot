@@ -3,10 +3,7 @@ services:
     name: wati-work-bot
     env: python
     buildCommand: |
-      pip install --upgrade pip
       pip install -r requirements.txt
       python -m playwright install chromium --with-deps
     startCommand: python main.py
-    envVars:
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src/.playwright-browsers
+    plan: free
