@@ -2,7 +2,7 @@
 const { chromium } = require('playwright');
 
 (async () => {
-  const browser = await chromium.launch({ headless: false }); // visible so you can log in
+  const browser = await chromium.launch({ headless: true }); // visible so you can log in
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto('https://auth.wati.io/login', { waitUntil: 'networkidle' });
@@ -17,3 +17,4 @@ const { chromium } = require('playwright');
     process.exit(0);
   });
 })();
+
