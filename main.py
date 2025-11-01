@@ -47,7 +47,7 @@ async def ensure_chromium_installed():
     if ON_RENDER and not os.path.exists(chromium_path):
         print("🧩 Chromium not found, installing it now...", flush=True)
         process = await asyncio.create_subprocess_exec(
-            "python3", "-m", "playwright", "install", "chromium",
+            "python", "-m", "playwright", "install", "chromium",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
@@ -167,3 +167,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
