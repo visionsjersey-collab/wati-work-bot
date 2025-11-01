@@ -6,25 +6,25 @@ import zipfile
 from aiohttp import web
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
-# ✅ Always flush logs immediately (important for Render)
+# ✅ Flush logs immediately
 sys.stdout.reconfigure(line_buffering=True)
 
-# ✅ Detect environment (local vs Render)
+# ✅ Detect environment
 ON_RENDER = os.environ.get("RENDER") == "true"
 
-# ✅ Set Playwright browser path based on environment
+# ✅ Browser path handling
 if ON_RENDER:
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
 else:
-    os.environ.pop("PLAYWRIGHT_BROWSERS_PATH", None)  # Use default local install
+    os.environ.pop("PLAYWRIGHT_BROWSERS_PATH", None)
 
-# ✅ Persistent user data directory (saves login)
+# ✅ Paths
 USER_DATA_DIR = (
     "/opt/render/project/src/wati_profile" if ON_RENDER else os.path.join(os.getcwd(), "wati_profile")
 )
 ZIP_PATH = os.path.join(os.getcwd(), "wati_profile.zip")
 
-# 🧩 Auto-unzip saved login for Render
+# 🧩 Unzip profile on Render
 def unzip_wati_profile():
     print("Checking for saved login ZIP:", os.path.exists(ZIP_PATH), flush=True)
     if ON_RENDER and os.path.exists(ZIP_PATH):
@@ -40,14 +40,13 @@ def unzip_wati_profile():
     else:
         print("⚠️ No wati_profile.zip found in Render build.", flush=True)
 
-
-# ✅ Ensure Chromium is installed
+# ✅ Ensure Chromium exists
 async def ensure_chromium_installed():
     chromium_path = "/opt/render/project/src/.playwright-browsers/chromium-1117/chrome-linux/chrome"
     if ON_RENDER and not os.path.exists(chromium_path):
         print("🧩 Chromium not found, installing it now...", flush=True)
         process = await asyncio.create_subprocess_exec(
-            "python", "-m", "playwright", "install", "chromium",
+            "python3", "-m", "playwright", "install", "chromium",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
@@ -61,12 +60,11 @@ async def ensure_chromium_installed():
     else:
         print("✅ Chromium already exists or running locally — skipping install.", flush=True)
 
-
-# 🌐 Bot configuration
+# 🌐 WATI settings
 WATI_URL = "https://live.wati.io/1037246/teamInbox/"
 CHECK_INTERVAL = 180  # seconds
 
-
+# 🧠 Main automation
 async def run_wati_bot():
     print("🌐 Launching WATI automation with persistent browser...", flush=True)
 
@@ -75,15 +73,13 @@ async def run_wati_bot():
             async with async_playwright() as p:
                 browser_context = await p.chromium.launch_persistent_context(
                     user_data_dir=USER_DATA_DIR,
-                    headless=ON_RENDER,  # ✅ headless only on Render
+                    headless=ON_RENDER,
                 )
                 page = await browser_context.new_page()
-
                 print("🌍 Navigating to WATI Inbox...", flush=True)
                 await page.goto(WATI_URL, timeout=60000)
                 await asyncio.sleep(5)
 
-                # ✅ Always ensure login and save it
                 try:
                     await page.wait_for_selector("text=Team Inbox", timeout=20000)
                     print("✅ Already logged in — saving session anyway!", flush=True)
@@ -98,57 +94,58 @@ async def run_wati_bot():
                         await asyncio.sleep(10)
                         continue
 
-                # ✅ Always save login session
-                print("💾 Saving login session to:", USER_DATA_DIR, flush=True)
-                storage_path = os.path.join(USER_DATA_DIR, "storage.json")
+                # ✅ Save session
+                print("💾 Saving full login session to:", USER_DATA_DIR, flush=True)
                 try:
-                    await browser_context.storage_state(path=storage_path)
-                    print(f"✅ storage.json saved successfully at {storage_path}", flush=True)
+                    await browser_context.storage_state(path=os.path.join(USER_DATA_DIR, "storage.json"))
+                    print("✅ storage.json saved successfully!", flush=True)
                 except Exception as e:
                     print(f"⚠️ Failed to save storage.json: {e}", flush=True)
 
-                # ✅ Zip the folder safely (skip sockets/locks)
+                # ✅ Safe zipping — skips cache and volatile files
                 if not ON_RENDER:
-                    print("📦 Creating wati_profile.zip automatically...", flush=True)
-                    skip_keywords = ["Socket", "lock", "Singleton", "Crashpad", "Temp"]
+                    print("📦 Creating wati_profile.zip including full Chrome profile...", flush=True)
                     with zipfile.ZipFile(ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zipf:
-                        for root, _, files in os.walk(USER_DATA_DIR):
+                        for root, dirs, files in os.walk(USER_DATA_DIR):
+                            # Skip cache folders to prevent race conditions
+                            if "Cache" in root or "GPUCache" in root or "Code Cache" in root:
+                                continue
                             for file in files:
                                 file_path = os.path.join(root, file)
-                                if any(word.lower() in file.lower() for word in skip_keywords):
-                                    print(f"⚠️ Skipping temp/socket file: {file_path}", flush=True)
+                                rel_path = os.path.relpath(file_path, os.path.dirname(USER_DATA_DIR))
+                                if any(skip in file_path for skip in [
+                                    "SingletonLock", "SingletonSocket",
+                                    "SingletonCookie", "RunningChromeVersion"
+                                ]):
+                                    print(f"⚠️ Skipping system file during zip: {file_path}", flush=True)
                                     continue
                                 try:
-                                    zipf.write(file_path, os.path.relpath(file_path, os.path.dirname(USER_DATA_DIR)))
-                                except Exception as e:
-                                    print(f"⚠️ Skipping problematic file {file_path}: {e}", flush=True)
-                                    continue
-                    print("✅ wati_profile.zip created successfully!", flush=True)
-                    print("📤 You can now upload this ZIP to GitHub for Render deploy.", flush=True)
+                                    zipf.write(file_path, rel_path)
+                                except FileNotFoundError:
+                                    print(f"⚠️ Skipped missing file: {file_path}", flush=True)
+                    print("✅ wati_profile.zip created successfully (FULL profile, no cache)!", flush=True)
+                    print("📤 Upload this ZIP to GitHub for Render deploy.", flush=True)
 
                 await browser_context.close()
                 print("✅ Login session saved permanently! You can rerun the bot now.", flush=True)
-                return  # Stop after saving login once
+                return
 
         except Exception as e:
             print(f"🚨 Fatal error: {e}", flush=True)
             await asyncio.sleep(10)
 
-
-# ✅ Web server — serves ZIP file for direct download
+# ✅ Web server for Render + ZIP download
 async def start_web_server():
     async def handle_root(request):
         return web.Response(text="✅ WATI AutoBot running successfully!")
-
     async def handle_zip(request):
         if os.path.exists(ZIP_PATH):
             return web.FileResponse(ZIP_PATH)
         else:
             return web.Response(text="❌ ZIP not found", status=404)
-
     app = web.Application()
     app.router.add_get("/", handle_root)
-    app.router.add_get("/wati_profile.zip", handle_zip)  # 🧩 Download endpoint
+    app.router.add_get("/wati_profile.zip", handle_zip)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 10000)))
@@ -156,7 +153,7 @@ async def start_web_server():
     print("🌍 Web server running on port", os.getenv("PORT", 10000), flush=True)
     print("📥 Download your ZIP at /wati_profile.zip", flush=True)
 
-
+# ✅ Entry point
 async def main():
     print("🚀 Initializing environment...", flush=True)
     unzip_wati_profile()
@@ -164,7 +161,5 @@ async def main():
     print("🚀 Starting bot and web server...", flush=True)
     await asyncio.gather(start_web_server(), run_wati_bot())
 
-
 if __name__ == "__main__":
     asyncio.run(main())
-
