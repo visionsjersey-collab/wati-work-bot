@@ -83,82 +83,59 @@ async def run_wati_bot():
                 await page.goto(WATI_URL, timeout=60000)
                 await asyncio.sleep(5)
 
-                # ✅ Verify if login session is still valid
+                # ✅ Always ensure login and save it
                 try:
-                    await page.wait_for_selector("text=Team Inbox", timeout=60000)
-                    print("✅ Logged in and WATI Inbox loaded successfully!", flush=True)
+                    await page.wait_for_selector("text=Team Inbox", timeout=20000)
+                    print("✅ Already logged in — saving session anyway!", flush=True)
                 except PlaywrightTimeout:
                     print("⚠️ Login required — please log in manually (locally).", flush=True)
                     print("💾 Once logged in, DO NOT close the browser — wait 60s to save session.", flush=True)
-                    await asyncio.sleep(60)
-                    print("💾 Saving login session to:", USER_DATA_DIR, flush=True)
-
-                    await browser_context.storage_state(path=os.path.join(USER_DATA_DIR, "storage.json"))
-                    await browser_context.close()
-
-                    # ✅ Auto-zip the profile
-                    if not ON_RENDER:
-                        print("📦 Creating wati_profile.zip automatically...", flush=True)
-                        with zipfile.ZipFile(ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zipf:
-                            for root, _, files in os.walk(USER_DATA_DIR):
-                                for file in files:
-                                    file_path = os.path.join(root, file)
-                                    zipf.write(file_path, os.path.relpath(file_path, os.path.dirname(USER_DATA_DIR)))
-                        print("✅ wati_profile.zip created successfully!", flush=True)
-                        print("📤 Upload this ZIP to GitHub for Render deploy.", flush=True)
-
-                    print("✅ Login session saved permanently! Please rerun the bot.", flush=True)
-                    return  # stop loop to restart
-
-                # ✅ Main automation loop
-                print("🔍 Session valid — starting auto responder...", flush=True)
-                while True:
                     try:
-                        unread = await page.query_selector_all("div.conversation-item__unread-count")
-                        if not unread:
-                            print("😴 No unread chats found. Waiting 3 mins...", flush=True)
-                            await asyncio.sleep(CHECK_INTERVAL)
-                            await page.reload()
-                            continue
-
-                        print(f"💬 Found {len(unread)} unread chat(s). Processing...", flush=True)
-                        for idx, elem in enumerate(unread, start=1):
-                            try:
-                                print(f"👉 Opening unread chat {idx}/{len(unread)}", flush=True)
-                                await elem.scroll_into_view_if_needed()
-                                await elem.click()
-                                await asyncio.sleep(2.5)
-                                await page.click(
-                                    "#mainTeamInbox div.chat-side-content div span.chat-input__icon-option",
-                                    timeout=10000,
-                                )
-                                await asyncio.sleep(1.5)
-                                ads_ctwa = await page.query_selector("#flow-nav-68ff67df4f393f0757f108d8")
-                                if ads_ctwa:
-                                    await ads_ctwa.click()
-                                    print("✅ Clicked Ads (CTWA) successfully!", flush=True)
-                                else:
-                                    print("⚠️ 'Ads (CTWA)' not found.", flush=True)
-                                await asyncio.sleep(2)
-                            except Exception as e:
-                                print(f"⚠️ Error processing chat #{idx}: {e}", flush=True)
-                                continue
-
-                        print("🕒 Waiting before next check...", flush=True)
-                        await asyncio.sleep(CHECK_INTERVAL)
-                        await page.reload()
-
-                    except Exception as e:
-                        print(f"⚠️ Loop error: {e}", flush=True)
+                        await page.wait_for_selector("text=Team Inbox", timeout=60000)
+                        print("✅ Login detected after manual login!", flush=True)
+                    except PlaywrightTimeout:
+                        print("⏳ Still not logged in after 60s — retrying...", flush=True)
                         await asyncio.sleep(10)
                         continue
+
+                # ✅ Always save login session
+                print("💾 Saving login session to:", USER_DATA_DIR, flush=True)
+                storage_path = os.path.join(USER_DATA_DIR, "storage.json")
+                try:
+                    await browser_context.storage_state(path=storage_path)
+                    print(f"✅ storage.json saved successfully at {storage_path}", flush=True)
+                except Exception as e:
+                    print(f"⚠️ Failed to save storage.json: {e}", flush=True)
+
+                # ✅ Zip the folder safely (skip sockets/locks)
+                if not ON_RENDER:
+                    print("📦 Creating wati_profile.zip automatically...", flush=True)
+                    skip_keywords = ["Socket", "lock", "Singleton", "Crashpad", "Temp"]
+                    with zipfile.ZipFile(ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zipf:
+                        for root, _, files in os.walk(USER_DATA_DIR):
+                            for file in files:
+                                file_path = os.path.join(root, file)
+                                if any(word.lower() in file.lower() for word in skip_keywords):
+                                    print(f"⚠️ Skipping temp/socket file: {file_path}", flush=True)
+                                    continue
+                                try:
+                                    zipf.write(file_path, os.path.relpath(file_path, os.path.dirname(USER_DATA_DIR)))
+                                except Exception as e:
+                                    print(f"⚠️ Skipping problematic file {file_path}: {e}", flush=True)
+                                    continue
+                    print("✅ wati_profile.zip created successfully!", flush=True)
+                    print("📤 You can now upload this ZIP to GitHub for Render deploy.", flush=True)
+
+                await browser_context.close()
+                print("✅ Login session saved permanently! You can rerun the bot now.", flush=True)
+                return  # Stop after saving login once
 
         except Exception as e:
             print(f"🚨 Fatal error: {e}", flush=True)
             await asyncio.sleep(10)
 
 
-# ✅ Web server — also serves ZIP file for direct download
+# ✅ Web server — serves ZIP file for direct download
 async def start_web_server():
     async def handle_root(request):
         return web.Response(text="✅ WATI AutoBot running successfully!")
@@ -171,13 +148,13 @@ async def start_web_server():
 
     app = web.Application()
     app.router.add_get("/", handle_root)
-    app.router.add_get("/wati_profile.zip", handle_zip)  # 🧩 Direct ZIP download endpoint
+    app.router.add_get("/wati_profile.zip", handle_zip)  # 🧩 Download endpoint
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 10000)))
     await site.start()
     print("🌍 Web server running on port", os.getenv("PORT", 10000), flush=True)
-    print("📥 You can download your ZIP at /wati_profile.zip", flush=True)
+    print("📥 Download your ZIP at /wati_profile.zip", flush=True)
 
 
 async def main():
