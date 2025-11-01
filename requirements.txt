@@ -1,2 +1,4 @@
 playwright==1.44.0
 aiohttp==3.9.5
+greenlet==2.0.2
+
