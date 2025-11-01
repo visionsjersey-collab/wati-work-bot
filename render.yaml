@@ -1,25 +1,17 @@
 services:
   - type: web
     name: wati-work-bot
-    env: python
+    env: python3.11
     buildCommand: |
-      pip install --upgrade pip
-      pip install --upgrade greenlet
-      pip install -r requirements.txt
+      pip install --upgrade pip setuptools wheel
+      pip install greenlet>=2.0.2 -r requirements.txt
       python -m playwright install chromium
     startCommand: python main.py
     envVars:
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/.playwright-browsers
       - key: PORT
-        value: 10000
-   
+        value: ${PORT}
     autoDeploy: true
     plan: free
-
-
-
-
-
-
-
+    cache: pip
