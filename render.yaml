@@ -4,6 +4,7 @@ services:
     env: python
     buildCommand: |
       pip install --upgrade pip
+      pip install --upgrade greenlet
       pip install -r requirements.txt
       python -m playwright install chromium
     startCommand: python main.py
@@ -15,6 +16,7 @@ services:
    
     autoDeploy: true
     plan: free
+
 
 
 
