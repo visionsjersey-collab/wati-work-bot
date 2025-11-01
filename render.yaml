@@ -12,10 +12,10 @@ services:
         value: /opt/render/project/src/.playwright-browsers
       - key: PORT
         value: 10000
-      - key: PYTHON_VERSION
-        value: 3.11.11
+   
     autoDeploy: true
     plan: free
+
 
 
 
