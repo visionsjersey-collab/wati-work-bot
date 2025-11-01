@@ -64,7 +64,9 @@ async def run_wati_bot():
     print("🌐 Launching WATI automation with persistent browser...", flush=True)
 
     # 🧠 If on Render: open visible browser once for login
-    headless_mode = False if ON_RENDER else True
+    # headless_mode = False if ON_RENDER else True
+    headless_mode = True
+    
 
     while True:
         try:
@@ -124,4 +126,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
